@@ -1,32 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
+# 
+# [Modified for Isaac Lab 0.5.x compatibility]
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-# list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the copyright holder nor the names of its
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
 import time
 import os
@@ -52,15 +28,25 @@ class OnPolicyRunner:
         self.policy_cfg = train_cfg["policy"]
         self.device = device
         self.env = env
-        obs, extras = self.env.get_observations()   
+
+        obs_dict = self.env.get_observations()
+        obs = obs_dict["policy"] 
+        
         self.num_obs = obs.shape[1]
         self.obs_history_len = self.alg_cfg.pop("obs_history_len")
-        assert "commands" in extras["observations"], f"Commands not found in observations"
-        self.num_commands = extras["observations"]["commands"].shape[1]
-        assert "critic" in extras["observations"], f"Critic observations not found in observations"
-        num_critic_obs = extras["observations"]["critic"].shape[1] + self.num_commands
-        privileged_input_size = num_critic_obs
+        
+        if "commands" in obs_dict:
+            self.num_commands = obs_dict["commands"].shape[1]
+        else:
+            raise KeyError("Commands not found in observations dictionary")
+
+        if "critic" in obs_dict:
+            num_critic_obs = obs_dict["critic"].shape[1] + self.num_commands
+        else:
+             raise KeyError("Critic observations not found in observations dictionary")
+             
         self.ecd_cfg["num_input_dim"] = self.obs_history_len * self.num_obs
+        # -------------------------------------------------------
 
         encoder = eval("MLP_Encoder")(
             **self.ecd_cfg,
@@ -113,19 +99,16 @@ class OnPolicyRunner:
         self.tot_time = 0
         self.current_learning_iteration = 0
 
-        # _, _ = self.env.reset()
         _ = self.env.reset()
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
         if self.log_dir is not None and self.writer is None:
-            # Launch either Tensorboard or Wandb & Tensorboard summary writer(s), default: Tensorboard.
             self.logger_type = self.cfg.get("logger", "tensorboard")
             self.logger_type = self.logger_type.lower()
 
             if self.logger_type == "wandb":
                 from ..utils.wandb_utils import WandbSummaryWriter
-
                 self.writer = WandbSummaryWriter(
                     log_dir=self.log_dir, flush_secs=10, cfg=self.cfg
                 )
@@ -141,11 +124,17 @@ class OnPolicyRunner:
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=int(self.env.max_episode_length)
             )
-        obs, extras = self.env.get_observations()
-        obs_history = extras["observations"].get("obsHistory")
+        
+        obs_dict = self.env.get_observations()
+        obs = obs_dict["policy"]
+        obs_history = obs_dict.get("obsHistory")
+        if obs_history is None:
+             raise KeyError("obsHistory not found in observations")
         obs_history = obs_history.flatten(start_dim=1)
-        critic_obs = extras["observations"].get("critic")
-        commands = extras["observations"].get("commands") 
+        
+        critic_obs = obs_dict.get("critic")
+        commands = obs_dict.get("commands") 
+        # -------------------------------
 
         obs, obs_history, commands, critic_obs = (
             obs.to(self.device),
@@ -153,8 +142,8 @@ class OnPolicyRunner:
             commands.to(self.device),
             critic_obs.to(self.device),
         )
-        # ???
-        self.alg.actor_critic.train()  # switch to train mode (for dropout for example)
+
+        self.alg.actor_critic.train()
 
         ep_infos = []
         rewbuffer = deque(maxlen=100)
@@ -173,19 +162,21 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, obs_history, commands, critic_obs)
-                    # add critic_obs_buf to step returns, make sure it updates in every for loop
-                    (obs, rewards, dones, infos) = self.env.step(actions)
+                    
+                    # --- [Fixed] 适配 step() 返回 4 个值 ---
+                    obs_dict, rewards, dones, infos = self.env.step(actions)
+                    
+                    obs = obs_dict["policy"]
+                    
+                    critic_obs = obs_dict["critic"]
+                    obs_history = obs_dict["obsHistory"].flatten(start_dim=1)
+                    commands = obs_dict["commands"]
 
-                    critic_obs = infos["observations"]["critic"]
-                    obs_history = infos["observations"]["obsHistory"].flatten(start_dim=1)
-                    commands = infos["observations"]["commands"]
-
-                    # critic_obs = obs
                     obs, obs_history, commands, critic_obs, rewards, dones = (
                         obs.to(self.device),
                         obs_history.to(self.device),
                         commands.to(self.device),
-                        critic_obs.to(self.device), # critic_obs.to(self.device),
+                        critic_obs.to(self.device),
                         rewards.to(self.device),
                         dones.to(self.device),
                     )
@@ -326,8 +317,6 @@ class OnPolicyRunner:
                 f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                 f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n"""
             )
-            #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
-            #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")
         else:
             log_string = (
                 f"""{'#' * width}\n"""
@@ -338,8 +327,6 @@ class OnPolicyRunner:
                 f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
                 f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
             )
-            #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
-            #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")
 
         log_string += ep_string
         log_string += (

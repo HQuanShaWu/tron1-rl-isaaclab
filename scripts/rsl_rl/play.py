@@ -120,11 +120,23 @@ def main():
             "encoder",
             ppo_runner.alg.encoder.num_input_dim,
         )
+    
     # reset environment
-    obs, obs_dict = env.get_observations()
-    obs_history = obs_dict["observations"].get("obsHistory")
-    obs_history = obs_history.flatten(start_dim=1)
-    commands = obs_dict["observations"].get("commands") 
+    # [Modified] Adapt Isaac Lab v0.5+ API
+    obs_dict = env.get_observations()
+    obs = obs_dict["policy"]
+    
+    obs_history = obs_dict.get("obsHistory")
+    if obs_history is None:
+        obs_history = obs_dict["observations"].get("obsHistory") if "observations" in obs_dict else None
+    
+    if obs_history is not None:
+        obs_history = obs_history.flatten(start_dim=1)
+    
+    commands = obs_dict.get("commands")
+    if commands is None and "observations" in obs_dict:
+        commands = obs_dict["observations"].get("commands")
+
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
@@ -132,11 +144,17 @@ def main():
             # agent stepping
             est = encoder(obs_history)
             actions = policy(torch.cat((est, obs, commands), dim=-1).detach())
+            
             # env stepping
-            obs, _, _, infos = env.step(actions)
-            obs_history = infos["observations"].get("obsHistory")
-            obs_history = obs_history.flatten(start_dim=1)
-            commands = infos["observations"].get("commands") 
+            obs_dict, _, _, infos = env.step(actions)
+            
+            obs = obs_dict["policy"]
+            
+            obs_history = obs_dict.get("obsHistory")
+            commands = obs_dict.get("commands")
+            
+            if obs_history is not None:
+                obs_history = obs_history.flatten(start_dim=1)
 
     # close the simulator
     env.close()
