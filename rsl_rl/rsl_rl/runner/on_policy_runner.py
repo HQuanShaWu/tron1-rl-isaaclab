@@ -167,7 +167,6 @@ class OnPolicyRunner:
                     obs_dict, rewards, dones, infos = self.env.step(actions)
                     
                     obs = obs_dict["policy"]
-                    
                     critic_obs = obs_dict["critic"]
                     obs_history = obs_dict["obsHistory"].flatten(start_dim=1)
                     commands = obs_dict["commands"]

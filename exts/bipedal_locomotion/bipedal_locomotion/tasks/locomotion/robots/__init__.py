@@ -89,3 +89,31 @@ gym.register(
         "rsl_rl_cfg_entry_point": limx_sf_blind_flat_runner_cfg,
     },
 )
+
+
+
+
+# 导入刚才定义的类 (确保名字对得上)
+from .limx_pointfoot_env_cfg import PFLunarEnvCfg, PFLunarEnvCfg_PLAY
+
+gym.register(
+    id="Isaac-Limx-PF-Lunar-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # 直接引用 limx_pointfoot_env_cfg 模块里的类，而不是写字符串路径
+        "env_cfg_entry_point": limx_pointfoot_env_cfg.PFLunarEnvCfg,
+        # 直接传递上面实例化好的对象
+        "rsl_rl_cfg_entry_point": limx_pf_blind_flat_runner_cfg,
+    },
+)
+
+gym.register(
+    id="Isaac-Limx-PF-Lunar-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": limx_pointfoot_env_cfg.PFLunarEnvCfg_PLAY,
+        "rsl_rl_cfg_entry_point": limx_pf_blind_flat_runner_cfg,
+    },
+)

@@ -235,3 +235,76 @@ class PFStairEnvCfgv1_PLAY(PFBaseEnvCfg_PLAY):
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.max_init_terrain_level = None
         self.scene.terrain.terrain_generator = STAIRS_TERRAINS_PLAY_CFG.replace(difficulty_range=(0.5, 0.5))
+
+
+
+
+from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
+# 导入刚才写好的奖励函数
+import bipedal_locomotion.tasks.locomotion.my_rewards as my_rewards 
+
+#############################
+# [New] Pointfoot Lunar Navigation Environment
+#############################
+
+@configclass
+class PFLunarEnvCfg(PFBlindRoughEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        
+        # 1. 重力
+        self.sim.gravity = (0.0, 0.0, -1.62)
+        
+        # 2. 传感器
+        self.scene.height_scanner = RayCasterCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/base_Link",
+            attach_yaw_only=True,
+            pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[4.0, 4.0]), 
+            debug_vis=False,
+            mesh_prim_paths=["/World/ground"],
+        )
+        
+        # 3. 物理嵌入奖励 (宽松版)
+        self.rewards.lunar_contact_limit = RewTerm(
+            func=my_rewards.pen_lunar_contact_force,
+            weight=-0.5,
+            params={
+                "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*foot_[LR]_Link"),
+                "threshold_scale": 3.5 # [改动] 放宽到 3.5 倍，先让它站稳
+            },
+        )
+        self.rewards.lunar_vertical_damping = RewTerm(
+            func=my_rewards.pen_lunar_vertical_instability,
+            weight=-1.0, # [改动] 稍微降低惩罚，允许一点点弹跳
+        )
+        
+        # 4. 调整基础奖励 (生存优先)
+        if hasattr(self.rewards, "keep_balance"):
+            self.rewards.keep_balance.weight = 3.0 # [改动] 大幅增加生存奖励
+            
+        if hasattr(self.rewards, "test_gait_reward"):
+            self.rewards.test_gait_reward.weight = 0.1 # [改动] 忽略地球步态，让它自己学
+            
+        if hasattr(self.rewards, "pen_base_height"):
+            self.rewards.pen_base_height.weight = -10.0 # [改动] 降低惩罚权重 (原来是-20)
+            self.rewards.pen_base_height.params["target_height"] = 0.50 # [改动] 降低目标高度，降低重心
+            
+        if hasattr(self.rewards, "pen_lin_vel_z"):
+            self.rewards.pen_lin_vel_z.weight = -0.5 # 恢复默认，太严了它不敢动
+            
+        # 5. 地形 (先用最简单的生成器，不要太难)
+        self.scene.terrain.terrain_generator = BLIND_ROUGH_TERRAINS_CFG.replace(
+            difficulty_range=(0.0, 0.3) # [改动] 从平地开始，稍微有一点点起伏
+        )
+
+@configclass
+class PFLunarEnvCfg_PLAY(PFLunarEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        # 推理时的配置
+        self.scene.num_envs = 16
+        self.events.push_robot = None
+        self.events.add_base_mass = None
+        # 开启雷达可视化，方便录屏看导航效果
+        self.scene.height_scanner.debug_vis = True
