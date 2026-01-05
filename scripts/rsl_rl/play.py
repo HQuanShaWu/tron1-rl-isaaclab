@@ -2,6 +2,25 @@
 
 """Launch Isaac Sim Simulator first."""
 
+
+# use specific rsl_rl package
+import sys
+import os
+# .../rsl_rl/train.py
+current_script_path = os.path.abspath(__file__)
+
+# .../tron1-rl-isaaclab
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_script_path)))
+
+# .../tron1-rl-isaaclab/rsl_rl
+local_rsl_rl_path = os.path.join(project_root, "rsl_rl")
+
+# insert
+if local_rsl_rl_path not in sys.path:
+    print(f"[INFO] Forcing local rsl_rl import from: {local_rsl_rl_path}")
+    sys.path.insert(0, local_rsl_rl_path)
+
+
 import argparse
 
 from isaaclab.app import AppLauncher
