@@ -15,10 +15,12 @@ This branch contains fixes to make the code compatible with **NVIDIA Isaac Lab v
 ## 🚀 How to Run / 如何运行
 
 1. Install Isaac Lab.
+2. clone this project at IsaacLab/ .
 2. Install this package:
    ```bash
-   pip install -e .
-   # If you have conflicts with system rsl_rl, uninstall it first
+   cd tron1-rl-isaaclab/exts/bipedal_locomotion
+   python -m pip install -e . --no-build-isolation
+   # However, this will replace the protobuf-6.33.2+ (installed by isaac_lab 0.5.1+) by protobuf-4.25.8. 
    ```
 3. Train:
    ```bash
