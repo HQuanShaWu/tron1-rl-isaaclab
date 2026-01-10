@@ -1,6 +1,9 @@
 import gymnasium as gym
 
-from bipedal_locomotion.tasks.locomotion.agents.limx_rsl_rl_ppo_cfg import PF_TRON1AFlatPPORunnerCfg, WF_TRON1AFlatPPORunnerCfg, SF_TRON1AFlatPPORunnerCfg
+from bipedal_locomotion.tasks.locomotion.agents.limx_rsl_rl_ppo_cfg import (
+    PF_TRON1AFlatPPORunnerCfg, 
+    WF_TRON1AFlatPPORunnerCfg, 
+    SF_TRON1AFlatPPORunnerCfg)
 
 from . import limx_pointfoot_env_cfg, limx_wheelfoot_env_cfg, limx_solefoot_env_cfg
 
@@ -91,29 +94,18 @@ gym.register(
 )
 
 
-
-
-# 导入刚才定义的类 (确保名字对得上)
-from .limx_pointfoot_env_cfg import PFLunarEnvCfg, PFLunarEnvCfg_PLAY
+#########################
+# PF Normal Gravity with RGB-D Camera Debug Environment
+#########################
+from .limx_pointfoot_env_cfg import PFNormalGravWorkEnvCfg
+# before playing, train a checkpoint use Isaac-Limx-PF-Blind-Flat-v0
 
 gym.register(
-    id="Isaac-Limx-PF-Lunar-v0",
+    id="Isaac-Limx-PF-Normal-Play-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        # 直接引用 limx_pointfoot_env_cfg 模块里的类，而不是写字符串路径
-        "env_cfg_entry_point": limx_pointfoot_env_cfg.PFLunarEnvCfg,
-        # 直接传递上面实例化好的对象
-        "rsl_rl_cfg_entry_point": limx_pf_blind_flat_runner_cfg,
-    },
-)
-
-gym.register(
-    id="Isaac-Limx-PF-Lunar-Play-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": limx_pointfoot_env_cfg.PFLunarEnvCfg_PLAY,
+        "env_cfg_entry_point": limx_pointfoot_env_cfg.PFNormalGravWorkEnvCfg,
         "rsl_rl_cfg_entry_point": limx_pf_blind_flat_runner_cfg,
     },
 )

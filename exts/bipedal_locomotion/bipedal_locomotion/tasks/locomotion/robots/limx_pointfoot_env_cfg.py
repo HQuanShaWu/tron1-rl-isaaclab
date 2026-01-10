@@ -203,7 +203,6 @@ class PFStairEnvCfgv1(PFBaseEnvCfg):
         )
         
         self.scene.height_scanner.update_period = self.decimation * self.sim.dt
-
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
 
@@ -239,24 +238,51 @@ class PFStairEnvCfgv1_PLAY(PFBaseEnvCfg_PLAY):
 
 
 
-from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
-# 导入刚才写好的奖励函数
-import bipedal_locomotion.tasks.locomotion.my_rewards as my_rewards 
 
-#############################
-# [New] Pointfoot Lunar Navigation Environment
-#############################
+
+
+
+
+
+import torch
+import math
+from dataclasses import MISSING
+from isaaclab.utils.math import quat_from_euler_xyz
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import CameraCfg, RayCasterCfg, patterns
+from isaaclab.sim.spawners.sensors import PinholeCameraCfg
+from bipedal_locomotion.tasks.locomotion.cfg.PF.limx_base_env_cfg import PFSceneCfg
 
 @configclass
-class PFLunarEnvCfg(PFBlindRoughEnvCfg):
+class PFLunarSceneCfg(PFSceneCfg):
+    """
+    专门为月球导航定制的场景配置。
+    继承自 PFSceneCfg，但额外增加了一个 camera 字段。
+    """
+    camera: CameraCfg | None = MISSING
+
+
+from isaaclab.assets import AssetBaseCfg
+from isaaclab.sim.spawners.shapes import SphereCfg
+from isaaclab.utils.math import quat_from_euler_xyz, quat_mul
+from isaaclab.sim import PreviewSurfaceCfg
+
+#####################################
+# Normal Gravity Workflow Test Demo
+#####################################
+
+@configclass
+class PFNormalGravWorkEnvCfg(PFBlindFlatEnvCfg_PLAY):
+    scene: PFLunarSceneCfg = PFLunarSceneCfg(num_envs=16, env_spacing=2.5)
+
     def __post_init__(self):
         super().__post_init__()
         
-        # 1. 重力
-        self.sim.gravity = (0.0, 0.0, -1.62)
+        self.scene.num_envs = 1
+        self.episode_length_s = 3600.0 
         
-        # 2. 传感器
+        # Sensor
+        # LiDAR
         self.scene.height_scanner = RayCasterCfg(
             prim_path="{ENV_REGEX_NS}/Robot/base_Link",
             attach_yaw_only=True,
@@ -264,47 +290,63 @@ class PFLunarEnvCfg(PFBlindRoughEnvCfg):
             debug_vis=False,
             mesh_prim_paths=["/World/ground"],
         )
-        
-        # 3. 物理嵌入奖励 (宽松版)
-        self.rewards.lunar_contact_limit = RewTerm(
-            func=my_rewards.pen_lunar_contact_force,
-            weight=-0.5,
-            params={
-                "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*foot_[LR]_Link"),
-                "threshold_scale": 3.5 # [改动] 放宽到 3.5 倍，先让它站稳
-            },
+
+        # RGB-D Camera
+        q_base = quat_from_euler_xyz(
+            torch.tensor(-90.0 * math.pi / 180.0), 
+            torch.tensor(0.0), 
+            torch.tensor(-90.0 * math.pi / 180.0)
         )
-        self.rewards.lunar_vertical_damping = RewTerm(
-            func=my_rewards.pen_lunar_vertical_instability,
-            weight=-1.0, # [改动] 稍微降低惩罚，允许一点点弹跳
+        q_pitch = quat_from_euler_xyz(
+            torch.tensor(-20.0 * math.pi / 180.0),
+            torch.tensor(0.0), 
+            torch.tensor(0.0)
         )
-        
-        # 4. 调整基础奖励 (生存优先)
-        if hasattr(self.rewards, "keep_balance"):
-            self.rewards.keep_balance.weight = 3.0 # [改动] 大幅增加生存奖励
-            
-        if hasattr(self.rewards, "test_gait_reward"):
-            self.rewards.test_gait_reward.weight = 0.1 # [改动] 忽略地球步态，让它自己学
-            
-        if hasattr(self.rewards, "pen_base_height"):
-            self.rewards.pen_base_height.weight = -10.0 # [改动] 降低惩罚权重 (原来是-20)
-            self.rewards.pen_base_height.params["target_height"] = 0.50 # [改动] 降低目标高度，降低重心
-            
-        if hasattr(self.rewards, "pen_lin_vel_z"):
-            self.rewards.pen_lin_vel_z.weight = -0.5 # 恢复默认，太严了它不敢动
-            
-        # 5. 地形 (先用最简单的生成器，不要太难)
-        self.scene.terrain.terrain_generator = BLIND_ROUGH_TERRAINS_CFG.replace(
-            difficulty_range=(0.0, 0.3) # [改动] 从平地开始，稍微有一点点起伏
+        final_rot = quat_mul(q_base, q_pitch).tolist()
+        self.scene.camera = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/base_Link/front_cam",
+            update_period=0.1,
+            height=480, width=640,
+            data_types=["rgb", "distance_to_image_plane"],
+            spawn=PinholeCameraCfg(focal_length=15.0),
+            offset=CameraCfg.OffsetCfg(
+                pos=(0.35, 0.0, 0.25), 
+                rot=final_rot
+            ),
         )
 
-@configclass
-class PFLunarEnvCfg_PLAY(PFLunarEnvCfg):
-    def __post_init__(self):
-        super().__post_init__()
-        # 推理时的配置
-        self.scene.num_envs = 16
-        self.events.push_robot = None
-        self.events.add_base_mass = None
-        # 开启雷达可视化，方便录屏看导航效果
-        self.scene.height_scanner.debug_vis = True
+        # A Red Ball for Debug
+        self.scene.marker_red_ball = AssetBaseCfg(
+            prim_path="/World/MarkerRedBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(3.0, 2.0, 0.5)), 
+        )
+
+        # A Blue Ball for Debug
+        self.scene.marker_blue_ball = AssetBaseCfg(
+            prim_path="/World/MarkerBlueBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 1.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(-3.0, 0.0, 0.5)), 
+        )
+
+        # A Green Ball for Debug
+        self.scene.marker_green_ball = AssetBaseCfg(
+            prim_path="/World/MarkerGreenBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(3.0, -2.0, 0.5)), 
+        )
