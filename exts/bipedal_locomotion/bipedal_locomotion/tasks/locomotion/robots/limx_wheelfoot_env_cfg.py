@@ -349,3 +349,145 @@ class WFStairEnvCfg_PLAY(WFBaseEnvCfg_PLAY):
         
 
 
+
+
+
+
+
+
+
+#############################
+# Wheelfoot Low Flat Environment
+#############################
+import torch
+from dataclasses import MISSING
+from isaaclab.sensors import CameraCfg, RayCasterCfg, patterns
+from isaaclab.sim.spawners.sensors import PinholeCameraCfg
+from bipedal_locomotion.tasks.locomotion.cfg.PF.limx_base_env_cfg import PFSceneCfg
+@configclass
+class PFLunarSceneCfg(PFSceneCfg):
+    """
+    专门为月球导航定制的场景配置。
+    继承自 PFSceneCfg，但额外增加了一个 camera 字段。
+    """
+    camera: CameraCfg | None = MISSING
+
+
+from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
+import bipedal_locomotion.tasks.locomotion.my_rewards as my_rewards 
+
+@configclass
+class WFLowFlatEnvCfg(WFBlindFlatEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        
+        self.sim.gravity = (0.0, 0.0, -1.62)
+        
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0) 
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0) 
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        
+        self.rewards.lunar_vertical_damping = RewTerm(
+            func=my_rewards.pen_lunar_vertical_instability,
+            weight=-2.0, 
+        )
+        
+        if hasattr(self.rewards, "rew_lin_vel_xy"): 
+            self.rewards.rew_lin_vel_xy.weight = 6.0 # from 3.0
+            
+        if hasattr(self.rewards, "pen_base_height"):
+            self.rewards.pen_base_height.weight = -20.0
+            self.rewards.pen_base_height.params["target_height"] = 0.60 # from 0.80
+            
+        if hasattr(self.rewards, "keep_balance"):
+            self.rewards.keep_balance.weight = 0.5
+            
+        if hasattr(self.rewards, "pen_joint_vel_wheel_l2"):
+            self.rewards.pen_joint_vel_wheel_l2.weight = -1.0e-4 # from -5e-3
+
+
+from isaaclab.assets import AssetBaseCfg
+from isaaclab.sim.spawners.shapes import SphereCfg
+from isaaclab.sim import PreviewSurfaceCfg
+from isaaclab.utils.math import quat_from_euler_xyz, quat_mul
+
+@configclass
+class WFLowFlatEnvCfg_PLAY(WFLowFlatEnvCfg):
+    scene: PFLunarSceneCfg = PFLunarSceneCfg(num_envs=1, env_spacing=2.5)
+    def __post_init__(self):
+        super().__post_init__()
+        self.episode_length_s = 3600
+        self.scene.num_envs = 1
+        self.events.push_robot = None
+        self.events.add_base_mass = None
+
+        # Sensor
+        # LiDAR
+        self.scene.height_scanner = RayCasterCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/base_Link",
+            attach_yaw_only=True,
+            pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[4.0, 4.0]), 
+            debug_vis=False,
+            mesh_prim_paths=["/World/ground"],
+        )
+
+        # RGB-D Camera
+        q_base = quat_from_euler_xyz(
+            torch.tensor(-90.0 * math.pi / 180.0), 
+            torch.tensor(0.0), 
+            torch.tensor(-90.0 * math.pi / 180.0)
+        )
+        q_pitch = quat_from_euler_xyz(
+            torch.tensor(-20.0 * math.pi / 180.0),
+            torch.tensor(0.0), 
+            torch.tensor(0.0)
+        )
+        final_rot = quat_mul(q_base, q_pitch).tolist()
+        self.scene.camera = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/base_Link/front_cam",
+            update_period=0.1,
+            height=480, width=640,
+            data_types=["rgb", "distance_to_image_plane"],
+            spawn=PinholeCameraCfg(focal_length=15.0),
+            offset=CameraCfg.OffsetCfg(
+                pos=(0.35, 0.0, 0.25), 
+                rot=final_rot
+            ),
+        )
+
+        # A Red Ball for Debug
+        self.scene.marker_red_ball = AssetBaseCfg(
+            prim_path="/World/MarkerRedBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(3.0, 2.0, 0.5)), 
+        )
+
+        # A Blue Ball for Debug
+        self.scene.marker_blue_ball = AssetBaseCfg(
+            prim_path="/World/MarkerBlueBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 1.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(-3.0, 0.0, 0.5)), 
+        )
+
+        # A Green Ball for Debug
+        self.scene.marker_green_ball = AssetBaseCfg(
+            prim_path="/World/MarkerGreenBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(3.0, -2.0, 0.5)), 
+        )
