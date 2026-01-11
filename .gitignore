@@ -34,3 +34,7 @@ _isaac_sim*
 _repo
 _build
 .lastformat
+
+
+# moon_terrain
+**/moon_terrain
