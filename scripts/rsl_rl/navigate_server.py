@@ -158,7 +158,7 @@ def main():
                                 if v < depth_img.shape[0] and u < depth_img.shape[1]:
                                     d = depth_img[v, u].item()
                                     
-                                    if d <= 0.0 or d > 20.0 or math.isnan(d) or math.isinf(d):
+                                    if d <= 0.0 or d > 30.0 or math.isnan(d) or math.isinf(d):
                                         print(f"[WARN] Invalid Depth: {d}. Likely clicked on Sky/Void.")
                                         resp = {"status": "ERR", "msg": "Target is sky or too far"}
                                     else:
@@ -217,7 +217,7 @@ def main():
                 else:
                     target_local = quat_apply_inverse(curr_quat, target_vec)
                     
-                    cmd_vel_x = torch.clamp(8.0 * target_local[0], -12.0, 12.0)
+                    cmd_vel_x = torch.clamp(1.0 * target_local[0], -1.2, 1.2)  # torch.clamp(8.0 * target_local[0], -12.0, 12.0) for PF Normal Flat
                     
                     yaw_error = torch.atan2(target_local[1], target_local[0])
                     cmd_ang_z = torch.clamp(2.0 * yaw_error, -1.0, 1.0)

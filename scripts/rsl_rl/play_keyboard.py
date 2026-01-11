@@ -146,8 +146,8 @@ class KeyboardController:
     def update_commands(self):
         # [修改] 加大速度，防止机器人“懒得动”
         # 如果你的 Policy 是在平地训练的，可能需要 1.0 甚至更大才能在月球上跑起来
-        speed_linear = 12.0  
-        speed_angular = 1.5 
+        speed_linear = 1.2  # 12.0 for PF Normal Flat
+        speed_angular = 1.0  # 1.5 for PF Normal Flat
         
         # X Axis: 支持 W 或 UP
         if (self._input.get_keyboard_value(self._keyboard, carb.input.KeyboardInput.W) or 

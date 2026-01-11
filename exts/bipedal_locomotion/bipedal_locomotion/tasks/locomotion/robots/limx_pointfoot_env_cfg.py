@@ -248,7 +248,6 @@ import torch
 import math
 from dataclasses import MISSING
 from isaaclab.utils.math import quat_from_euler_xyz
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import CameraCfg, RayCasterCfg, patterns
 from isaaclab.sim.spawners.sensors import PinholeCameraCfg
 from bipedal_locomotion.tasks.locomotion.cfg.PF.limx_base_env_cfg import PFSceneCfg

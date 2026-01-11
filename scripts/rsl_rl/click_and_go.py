@@ -213,7 +213,7 @@ def main():
                 else:
                     target_local = quat_apply_inverse(robot_quat, target_vec)
                     
-                    cmd_vel_x = torch.clamp(8 * target_local[0], -12.0, 12.0)
+                    cmd_vel_x = torch.clamp(1.0 * target_local[0], -1.2, 1.2)  # torch.clamp(12 * target_local[0], -12.0, 12.0) for PF Normal Flat
                     
                     yaw_error = torch.atan2(target_local[1], target_local[0])
                     cmd_ang_z = torch.clamp(2.0 * yaw_error, -1.0, 1.0)
