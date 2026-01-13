@@ -136,3 +136,30 @@ gym.register(
         "rsl_rl_cfg_entry_point": limx_wf_blind_flat_runner_cfg,
     },
 )
+
+
+#########################
+# WF Low Gravity Catena Environment
+#########################
+
+from .limx_wheelfoot_env_cfg import WFLowCatenaEnvCfg, WFLowCatenaEnvCfg_PLAY
+
+gym.register(
+    id="Isaac-Limx-WF-Low-Catena-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": limx_wheelfoot_env_cfg.WFLowCatenaEnvCfg,
+        "rsl_rl_cfg_entry_point": limx_wf_blind_flat_runner_cfg,
+    },
+)
+
+gym.register(
+    id="Isaac-Limx-WF-Low-Catena-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": limx_wheelfoot_env_cfg.WFLowCatenaEnvCfg_PLAY,
+        "rsl_rl_cfg_entry_point": limx_wf_blind_flat_runner_cfg,
+    },
+)

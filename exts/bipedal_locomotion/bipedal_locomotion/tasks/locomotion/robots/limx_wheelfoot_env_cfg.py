@@ -366,10 +366,6 @@ from isaaclab.sim.spawners.sensors import PinholeCameraCfg
 from bipedal_locomotion.tasks.locomotion.cfg.PF.limx_base_env_cfg import PFSceneCfg
 @configclass
 class PFLunarSceneCfg(PFSceneCfg):
-    """
-    专门为月球导航定制的场景配置。
-    继承自 PFSceneCfg，但额外增加了一个 camera 字段。
-    """
     camera: CameraCfg | None = MISSING
 
 
@@ -490,4 +486,137 @@ class WFLowFlatEnvCfg_PLAY(WFLowFlatEnvCfg):
                 collision_props=None, 
             ),
             init_state=AssetBaseCfg.InitialStateCfg(pos=(3.0, -2.0, 0.5)), 
+        )
+
+
+
+#############################
+# Wheelfoot Low Catena Environment
+#############################
+from isaaclab.terrains import TerrainImporterCfg
+from isaaclab.sim import RigidBodyMaterialCfg
+
+@configclass
+class WFLowCatenaEnvCfg(WFLowFlatEnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        
+        self.scene.terrain = TerrainImporterCfg(
+            prim_path="/World/ground",
+            terrain_type="usd",
+            usd_path="/home/img/IsaacLab/tron1-rl-isaaclab/exts/bipedal_locomotion/bipedal_locomotion/assets/usd/moon_terrain/catena160.usd",
+            physics_material=RigidBodyMaterialCfg(
+                static_friction=1.0, 
+                dynamic_friction=1.0, 
+                restitution=0.0
+            ),
+            debug_vis=False,
+        )
+
+        self.scene.height_scanner = RayCasterCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/base_Link",
+            attach_yaw_only=True,
+            pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[4.0, 4.0]), 
+            debug_vis=False,
+            mesh_prim_paths=["/World/ground/terrain/terrain/mesh"], 
+        )
+        
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+        self.events.reset_robot_base.params["pose_range"]["z"] = (0.3, 0.4)
+        self.scene.env_spacing = 1.5
+
+        self.sim.physx.gpu_max_rigid_patch_count = 10 * 1024 * 1024 
+        self.sim.physx.gpu_max_rigid_contact_count = 10 * 1024 * 1024
+        self.sim.physx.gpu_heap_capacity = 256 * 1024 * 1024 
+        self.sim.physx.gpu_found_lost_pairs_capacity = 10 * 1024 * 1024
+        self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 10 * 1024 * 1024
+
+        if hasattr(self.rewards, "lunar_contact_limit"):
+            self.rewards.lunar_contact_limit.params["threshold_scale"] = 8.0 
+            
+        if hasattr(self.rewards, "pen_action_rate"):
+            self.rewards.pen_action_rate.weight = -0.1
+            
+
+@configclass
+class WFLowCatenaEnvCfg_PLAY(WFLowCatenaEnvCfg):
+    scene: PFLunarSceneCfg = PFLunarSceneCfg(num_envs=1, env_spacing=2.5)
+    def __post_init__(self):
+        super().__post_init__()        
+        self.scene.num_envs = 64
+        
+        self.events.push_robot = None
+        self.events.add_base_mass = None
+        self.episode_length_s = 3600
+        
+        self.events.reset_robot_base.params["pose_range"]["x"] = (5.0, 8.0) 
+        self.events.reset_robot_base.params["pose_range"]["y"] = (-5.0, -8.0)
+
+        # LiDAR
+        self.scene.height_scanner.debug_vis = True
+        # self.scene.height_scanner = None
+        # self.scene.camera = None
+
+
+        # RGB-D Camera
+        q_base = quat_from_euler_xyz(
+            torch.tensor(-90.0 * math.pi / 180.0), 
+            torch.tensor(0.0), 
+            torch.tensor(-90.0 * math.pi / 180.0)
+        )
+        q_pitch = quat_from_euler_xyz(
+            torch.tensor(-20.0 * math.pi / 180.0),
+            torch.tensor(0.0), 
+            torch.tensor(0.0)
+        )
+        final_rot = quat_mul(q_base, q_pitch).tolist()
+        self.scene.camera = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/base_Link/front_cam",
+            update_period=0.1,
+            height=480, width=640,
+            data_types=["rgb", "distance_to_image_plane"],
+            spawn=PinholeCameraCfg(focal_length=15.0),
+            offset=CameraCfg.OffsetCfg(
+                pos=(0.35, 0.0, 0.25), 
+                rot=final_rot
+            ),
+        )
+
+
+        # A Red Ball for Debug
+        self.scene.marker_red_ball = AssetBaseCfg(
+            prim_path="/World/MarkerRedBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(5.0, -5.0, 0.8)), 
+        )
+
+        # A Blue Ball for Debug
+        self.scene.marker_blue_ball = AssetBaseCfg(
+            prim_path="/World/MarkerBlueBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 1.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(8.0, -8.0, 0.8)), 
+        )
+
+        # A Green Ball for Debug
+        self.scene.marker_green_ball = AssetBaseCfg(
+            prim_path="/World/MarkerGreenBall",
+            spawn=SphereCfg(
+                radius=0.2,
+                visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)), 
+                rigid_props=None, 
+                collision_props=None, 
+            ),
+            init_state=AssetBaseCfg.InitialStateCfg(pos=(5.0, -8.0, 0.8)), 
         )
